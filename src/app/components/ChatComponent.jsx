@@ -1,266 +1,237 @@
-"use client"
-import { requestPost, requestPut } from '@/app/actions/server';
-import { useRouter } from 'next/navigation';
-import React, { useState, useRef, useEffect } from 'react'
-import { toast } from 'sonner';
+// pages/chat.js
+'use client';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-const ChatComponent = ({ isSetting, conservationId, conversations, chatChanges, websiteLinks }) => {
+const dummyResponses = {
+    hello: "Hello! How can I assist you today?",
+    default: "Thank you for your question. Our team will respond shortly.",
+    shipping: "Standard shipping takes 3-5 business days. Express options available.",
+    payment: "We accept credit cards, PayPal, and bank transfers.",
+    products: "Here are our featured products:",
+    quote: "We'll prepare your quote within 24 hours.",
+    image: "Thank you for sharing the image! We've received it."
+};
+
+const suggestedQuestions = {
+    hello: ['How do I track my order?', 'What payment methods do you accept?', 'Show me products'],
+    shipping: ['What are shipping costs?', 'International shipping?', 'Track my package'],
+    payment: ['Is payment secure?', 'Do you accept crypto?', 'Payment plans?'],
+    products: ['Show laptops', 'Show phones', 'Show accessories']
+};
+
+const productCategories = {
+    laptops: [
+        { id: 1, name: "Gaming Laptop", price: "$1499", specs: "RTX 3080, 32GB RAM" },
+        { id: 2, name: "Ultrabook", price: "$1299", specs: "4K Display, 1TB SSD" }
+    ],
+    phones: [
+        { id: 3, name: "Smartphone Pro", price: "$999", specs: "5G, 256GB Storage" },
+        { id: 4, name: "Foldable Phone", price: "$1799", specs: "8\" Foldable Display" }
+    ]
+};
+
+export default function ChatComponent() {
     const router = useRouter();
-    const chatRef = useRef(null);
-    let foundChat = [];
-    if (conversations) {
-        foundChat = conversations.filter(chat => chat.id === conservationId);
-    }
-    const [chatHistory, setChatHistory] = useState(foundChat[0]?.chatHistory || []);
-    const [chatId, setchatId] = useState(conservationId || "");
-    const [message, setMessage] = useState("");
-    const [site, setSite] = useState(chatHistory[0]?.site || "");
-    const [imgUrl, setImgUrl] = useState([]);
-    const [loading, setLoading] = useState({
-        btnLoading: false,
-        assistantLoading: false,
-        upload: false,
-    });
-
-    const capitalizeFirstThreeWords = (message) => {
-        return message
-            .split(' ')
-            .slice(0, 3)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalize each word
-            .join(' ');
-    };
-
+    const searchParams = useSearchParams()
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [suggestions, setSuggestions] = useState([]);
+    const [selectedImage, setSelectedImage] = useState(null);
+    const initialized = useRef(false);
+    const fileInputRef = useRef(null);
+    const chatEndRef = useRef(null);
+    const messageParam = searchParams.get('message')
 
     useEffect(() => {
-        if (chatChanges) {
-            refreshChat();
+        if (!initialized.current && messageParam) {
+            initialized.current = true;
+            handleNewMessage(messageParam);
+        }
+    }, [messageParam]);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const handleNewMessage = (message) => {
+        const newMessage = {
+            text: message,
+            isBot: false,
+            image: selectedImage,
+            products: []
+        };
+
+        setMessages(prev => [...prev, newMessage]);
+
+        setTimeout(() => {
+            const botResponse = getBotResponse(message);
+            const botMessage = {
+                ...botResponse,
+                isBot: true
+            };
+
+            setMessages(prev => [...prev, botMessage]);
+            setSuggestions(botResponse.suggestions);
+        }, 1000);
+
+        setSelectedImage(null);
+        setInput('');
+    };
+
+    const getBotResponse = (message) => {
+        const lowerMsg = message.toLowerCase();
+        const response = { text: '', suggestions: [], products: [] };
+
+        switch (true) {
+            case lowerMsg === 'hello':
+                response.text = dummyResponses.hello;
+                response.suggestions = suggestedQuestions.hello;
+                break;
+            case lowerMsg.includes('shipping'):
+                response.text = dummyResponses.shipping;
+                response.suggestions = suggestedQuestions.shipping;
+                break;
+            case lowerMsg.includes('payment'):
+                response.text = dummyResponses.payment;
+                response.suggestions = suggestedQuestions.payment;
+                break;
+            case lowerMsg.includes('product') || lowerMsg.includes('show'):
+                response.text = dummyResponses.products;
+                response.products = productCategories[lowerMsg.includes('phone') ? 'phones' : 'laptops'];
+                response.suggestions = suggestedQuestions.products;
+                break;
+            case selectedImage:
+                response.text = dummyResponses.image;
+                break;
+            default:
+                response.text = dummyResponses.default;
         }
 
-        if (chatRef.current) {
-            setTimeout(() => {
-                chatRef.current.scrollTop = chatRef.current.scrollHeight;
-            }, 100);
+        return response;
+    };
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => setSelectedImage(e.target.result);
+            reader.readAsDataURL(file);
         }
-    }, [chatChanges])
+    };
 
-
-    const refreshChat = async () => {
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_FRONT}/api/conversations/user/`, {
-                cache: 'no-store',
-            });
-            const data = await res.json();
-
-            let conversations = [];
-            if (!data?.error) {
-                conversations = data;
-            }
-            if (conversations) {
-                const filterChat = conversations.filter(chat => chat.id === chatId);
-                setChatHistory(filterChat[0]?.chatHistory)
-                if (chatRef?.current) {
-                    setTimeout(() => {
-                        chatRef.current.scrollTop = chatRef.current.scrollHeight;
-                    }, 1000);
-                }
-            }
-
-
-        } catch (error) {
-            console.log("chat load error:", error)
-        }
-    }
-
-    const submitChat = async (role, message, chatId, chatHistory, images, site) => {
-        try {
-            if (role === "user") {
-                setLoading({
-                    btnLoading: true,
-                    assistantLoading: false,
-                    upload: false,
-                });
-                setImgUrl([]);
-            }
-
-            const updatedChatHistory = [
-                ...chatHistory,
-                { role, message, images, site }
-            ];
-
-            if (!chatId) {
-                const title = capitalizeFirstThreeWords(message);
-                const formData = {
-                    title,
-                    userId:null,
-                    isSetting: isSetting || false,
-                    chatHistory: updatedChatHistory
-                }
-                const res = await requestPost(formData, `${process.env.NEXT_PUBLIC_API_FRONT}/api/conversations`);
-                if (res?.chatHistory) {
-                    setchatId(res?.id);
-                    setChatHistory(res?.chatHistory);
-                    if (chatRef.current) {
-                        setTimeout(() => {
-                            chatRef.current.scrollTop = chatRef.current.scrollHeight;
-                        }, 100);
-                    }
-                    await generateTitle(message, res?.id)
-                    await submitAI(message, res?.id, res?.chatHistory, images || [])
-                    if (!isSetting) {
-                        router.push(`/chatbot/userid/${res?.id}`)
-                    }
-                }
-            }
-            else {
-                const formData = {
-                    chatHistory: updatedChatHistory
-                }
-                const res = await requestPut(formData, `${process.env.NEXT_PUBLIC_API_FRONT}/api/conversations/${chatId}`);
-                if (res?.chatHistory) {
-                    setChatHistory(res?.chatHistory)
-
-                    if (chatRef.current) {
-                        setTimeout(() => {
-                            chatRef.current.scrollTop = chatRef.current.scrollHeight;
-                        }, 100);
-                    }
-                    if (role === "user") {
-                        await submitAI(message, res?.id, res?.chatHistory, images || [])
-                    }
-                }
-            }
-            setMessage("");
-            setLoading({
-                btnLoading: false,
-                assistantLoading: false,
-                upload: false,
-            });
-        } catch (error) {
-            setLoading({
-                btnLoading: false,
-                assistantLoading: false,
-                upload: false,
-            });
-            console.error(error);
-            toast.error("Failed To Update Chat");
-        }
-    }
-
-    const submitAI = async (message, chatId, chatHistory, images) => {
-        try {
-            setMessage("");
-            const modelFormData = {
-                conversationID: chatId,
-                userMessage: message,
-                isSetting: isSetting || false,
-                site,
-            }
-            setLoading({
-                btnLoading: false,
-                assistantLoading: true,
-                upload: false,
-            });
-            let callApi = "chat"
-            if (isSetting) {
-                callApi = "update-system-prompt"
-            }
-            const resAI = await requestPost(modelFormData, `${process.env.NEXT_PUBLIC_API_CHATBOT}/${callApi}`);
-            if (resAI?.response) {
-                await submitChat("assistant", resAI?.response, chatId, chatHistory)
-            }
-
-        } catch (error) {
-            console.log("assistant error", error)
-            await submitChat("assistant", "Oops! Something went wrong. Please try again in a moment.", chatId, chatHistory)
-        }
-    }
-
-    const generateTitle = async (message, chatId) => {
-        try {
-            setMessage("");
-            const modelFormData = {
-                message
-            }
-            setLoading({
-                btnLoading: false,
-                assistantLoading: true,
-                upload: false,
-            });
-            const resAI = await requestPost(modelFormData, `${process.env.NEXT_PUBLIC_API_CHATBOT}/title`);
-            if (resAI?.title) {
-                const formData = {
-                    title: resAI?.title
-                }
-                await requestPut(formData, `${process.env.NEXT_PUBLIC_API_FRONT}/api/conversations/${chatId}`);
-            }
-            else {
-                toast.error("Failed To Generate Title!");
-            }
-
-        } catch (error) {
-            setLoading({
-                btnLoading: false,
-                assistantLoading: false,
-                upload: false,
-            });
-            toast.error("Failed To Generate Title!");
-        }
-    }
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!input.trim() && !selectedImage) return;
+        handleNewMessage(input || "Image shared");
+    };
 
     return (
-        <div className='grid grid-rows-[1fr_70px] md:grid-rows-[1fr_96px] w-full h-full'>
-            <div className="p-[20px] lg:p-[32px] flex flex-col w-full overflow-y-auto h-full gap-[24px] scroll-smooth" ref={chatRef}>
-                {chatHistory.map((chatMessage, index) => (
-                    chatMessage.role === 'assistant' ? (
-                        <div key={index} className='max-w-[886px] flex flex-col assistant items-start'>
-                            <div className='bg-[#f3f3f3] text-[#333333] p-[8px_16px] rounded-[8px] chat-res' dangerouslySetInnerHTML={{ __html: chatMessage?.message }}></div>
-                        </div>
-                    ) : (
-                        <div key={index} className={`grid grid-cols-[1fr_40px] gap-[16px] w-full max-w-[429px] ml-auto user_message `}>
-                            <div className='flex flex-col items-end gap-[8px]'>
-                                <p className='p-[8px_15px] rounded-[8px] bg-[#f3f3f3]'>{chatMessage?.message}</p>
-                                <span className=" text-[#d30335] text-[12px] font-[400]">{chatMessage?.site}</span>
-                            </div>
-                            <div className='w-[40px] h-[40px] rounded-[50%] flex overflow-hidden justify-center items-center bg-[#d30335]'>
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" height="16px" width="16px" fill='#ffffff'><path d="M304 128a80 80 0 1 0 -160 0 80 80 0 1 0 160 0zM96 128a128 128 0 1 1 256 0A128 128 0 1 1 96 128zM49.3 464H398.7c-8.9-63.3-63.3-112-129-112H178.3c-65.7 0-120.1 48.7-129 112zM0 482.3C0 383.8 79.8 304 178.3 304h91.4C368.2 304 448 383.8 448 482.3c0 16.4-13.3 29.7-29.7 29.7H29.7C13.3 512 0 498.7 0 482.3z" /></svg>
-                            </div>
-                        </div>
-                    )
+        <div className="h-screen bg-[#000000] md:p-[20px]">
+            <div className="w-full grid gap-[20px] grid-rows-[61px_1fr_56px] h-full mx-auto">
+                <div className='flex justify-between items-center border-b pb-[20px] border-[#181818]'>
+                    <button
+                        onClick={() => router.push('/')}
+                        className="text-white hover:text-gray-300 flex items-center gap-[10px]"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width={'15px'} fill='#ffffff'><path d="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.2 288 416 288c17.7 0 32-14.3 32-32s-14.3-32-32-32l-306.7 0L214.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z" /></svg>
+                        Back
+                    </button>
+                    <span className='w-[40px] h-[40px] rounded-[50%] bg-[#181818] flex justify-center items-center'>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" height="12px" fill='#ffffff'><path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512l388.6 0c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304l-91.4 0z" /></svg>
+                    </span>
+                </div>
 
-                ))}
+                <div className="h-full p-[20px] overflow-y-auto mb-6 space-y-4">
+                    {messages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}>
+                            <div className={`max-w-[80%] p-4 rounded-lg ${msg.isBot ? 'bg-[#252525]' : 'bg-[#141414]'
+                                }`}>
+                                {msg.image && (
+                                    <img
+                                        src={msg.image}
+                                        alt="Uploaded"
+                                        className="mb-2 rounded-lg max-h-40 object-cover"
+                                    />
+                                )}
+                                <p className="text-white">{msg.text}</p>
 
-                {loading?.assistantLoading && <div className='max-w-[886px] flex flex-col assistant items-start'>
-                    <div className='bg-[#f3f3f3] p-[8px_16px] rounded-[8px]'><div className="loader"></div></div>
-                </div>}
-            </div>
-            <div className='border-t-1 border-t border-[#f7f7f7] p-[10px_15px] md:p-[24px] grid grid-cols-[1fr] gap-[24px] items-center'>
-                <form onSubmit={(e) => {
-                    e.preventDefault();
-                    submitChat("user", message, chatId, chatHistory, imgUrl, site);
-                }} className='grid grid-cols-[120px_1fr] gap-[20px]'>
-                    {chatId && !isSetting ? <span className='text-[0.8rem] p-[12px_5px] text-center rounded-[12px] bg-[#0000000d]' alt='to change site, please create new chat'>{site ? site : "not selected"}</span>
-                        : <select onChange={(e) => setSite(e.target.value)} value={site} className='text-[0.8rem] p-[12px_5px] text-center rounded-[12px] bg-[#0000000d] cursor-pointer'>
-                            <option value="" disabled hidden>Select Website</option>
-                            {websiteLinks?.map((link, index) => (
-                                <option key={index} value={link}>
-                                    {link}
-                                </option>
-                            ))}
-                        </select>}
-                    <div className='grid grid-cols-[1fr_24px] p-[12px_20px] rounded-[12px] bg-[#0000000d]'>
-                        <input value={message} autoComplete="off" onChange={(e) => setMessage(e.target.value)} className='text-[14px] border-none outline-none bg-transparent w-full' type='text' placeholder="Write Message..." name='usermessage' />
-                        <button disabled={!site || !message || loading?.assistantLoading || loading?.btnLoading || loading?.upload} className="disabled:opacity-50 disabled:cursor-not-allowed">
-                            {loading?.btnLoading ? <div className="loader"></div> :
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M14.1401 0.960012L5.11012 3.96001C-0.959883 5.99001 -0.959883 9.30001 5.11012 11.32L7.79012 12.21L8.68012 14.89C10.7001 20.96 14.0201 20.96 16.0401 14.89L19.0501 5.87001C20.3901 1.82001 18.1901 -0.389988 14.1401 0.960012ZM14.4601 6.34001L10.6601 10.16C10.5101 10.31 10.3201 10.38 10.1301 10.38C9.94012 10.38 9.75012 10.31 9.60012 10.16C9.46064 10.0189 9.38242 9.82844 9.38242 9.63001C9.38242 9.43158 9.46064 9.24115 9.60012 9.10001L13.4001 5.28001C13.6901 4.99001 14.1701 4.99001 14.4601 5.28001C14.7501 5.57001 14.7501 6.05001 14.4601 6.34001Z" fill="#d30335" />
-                                </svg>
-                            }
-                        </button>
-                    </div>
+                                {msg.products?.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        {msg.products.map(product => (
+                                            <div key={product.id} className="p-4 bg-[#181818] rounded-lg">
+                                                <div className="h-32 bg-[#252525] rounded-lg mb-2"></div>
+                                                <h3 className="text-white font-bold">{product.name}</h3>
+                                                <p className="text-gray-400 text-sm">{product.specs}</p>
+                                                <p className="text-blue-400 mt-2">{product.price}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {msg.suggestions?.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-4">
+                                        {msg.suggestions.map((q, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => handleNewMessage(q)}
+                                                className="px-3 py-1 text-sm bg-[#181818] text-white rounded-full hover:bg-[#252525]"
+                                            >
+                                                {q}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                </div>
+
+                <form onSubmit={handleSubmit} className="flex gap-2 bg-[#141414] p-2 rounded-full">
+                    <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        ref={fileInputRef}
+                        className="hidden"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current.click()}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedImage ? 'bg-[#000000]' : 'bg-[#181818] hover:bg-[#252525]'
+                            }`}
+                    >
+                        {selectedImage ? (
+                            <img
+                                src={selectedImage}
+                                alt="Preview"
+                                className="w-8 h-8 rounded-full object-cover"
+                            />
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-5 h-5 text-white">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                        )}
+                    </button>
+
+                    <input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Type your message..."
+                        className="flex-1 bg-transparent text-white px-4 outline-none"
+                    />
+
+                    <button
+                        type="submit"
+                        className="w-10 h-10 bg-[#2c2c2c] rounded-full flex items-center justify-center hover:bg-blue-700"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" className="w-4 h-4 fill-white">
+                            <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480l0-83.6c0-4 1.5-7.8 4.2-10.8L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z" />
+                        </svg>
+                    </button>
                 </form>
             </div>
         </div>
-    )
+    );
 }
-
-export default ChatComponent
