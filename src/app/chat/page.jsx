@@ -1,6 +1,6 @@
 // pages/chat.js
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const dummyResponses = {
@@ -41,13 +41,14 @@ export default function ChatPage() {
     const initialized = useRef(false);
     const fileInputRef = useRef(null);
     const chatEndRef = useRef(null);
+    const messageParam = searchParams.get('message')
 
     useEffect(() => {
-        if (!initialized.current && searchParams.get('message')) {
+        if (!initialized.current && messageParam) {
             initialized.current = true;
-            handleNewMessage(searchParams.get('message'));
+            handleNewMessage(messageParam);
         }
-    }, []);
+    }, [messageParam]);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -126,6 +127,7 @@ export default function ChatPage() {
     };
 
     return (
+        <Suspense fallback={<div>Loading chat...</div>}>
         <div className="h-screen bg-[#000000] md:p-[20px]">
             <div className="w-full grid gap-[20px] grid-rows-[61px_1fr_56px] h-full mx-auto">
                 <div className='flex justify-between items-center border-b pb-[20px] border-[#181818]'>
@@ -232,5 +234,6 @@ export default function ChatPage() {
                 </form>
             </div>
         </div>
+        </Suspense>
     );
 }
