@@ -4,30 +4,39 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const dummyResponses = {
-    hello: "Hello! How can I assist you today?",
+    hello: `**Welcome to Adriana!** 👋  \n\nI'm Adriana, your assistant. Here’s what I can do for you:  \n\n✅ **Order Tracking** – Check your order status in seconds.  \n✅ **Quote Generation** – Get a price estimate for your order.  \n✅ **Browse Products** – Browse products, customize design and place order?  \n\nLet me know how I can assist you today. 😊`,
     default: "Thank you for your question. Our team will respond shortly.",
     shipping: "Standard shipping takes 3-5 business days. Express options available.",
     payment: "We accept credit cards, PayPal, and bank transfers.",
-    products: "Here are our featured products:",
+    products: "Here are our catgory of our products, which one you want to customized.",
     quote: "We'll prepare your quote within 24 hours.",
-    image: "Thank you for sharing the image! We've received it."
+    image: "Thank you for sharing the image! We've received it.",
+    quantity: "Sure! How many mugs do you need?",
+    color: "Got it! Do you have any color preferences?",
+    wantLogo: "Would you like to add a logo?",
+    uploadLogo: "please upload your logo!",
+    logoPast: "Logo received! Where should the logo be placed?",
+    calculate: "Based on your choices, the price is $3.50 per mug. Your total comes to $700. Would you like a detailed quote?",
+    giveEmail: "Sending it to your email. Please confirm your email address"
+
 };
 
 const suggestedQuestions = {
-    hello: ['How do I track my order?', 'What payment methods do you accept?', 'Show me products'],
+    hello: ['Quote Generation', 'Order Tracking', 'Browse Products'],
     shipping: ['What are shipping costs?', 'International shipping?', 'Track my package'],
     payment: ['Is payment secure?', 'Do you accept crypto?', 'Payment plans?'],
-    products: ['Show laptops', 'Show phones', 'Show accessories']
+    products: ['Cup', 'Mug'],
+    quantity: ["50", "100", "200"],
+    color: ['Red', 'Blue', "Green"],
+    logoPast: ['Front', 'Back', "Both"],
+    wantLogo: ['Yes', 'No, Without Image'],
+    calculate: ['Yes, I want detailed quote', 'No'],
 };
 
 const productCategories = {
-    laptops: [
-        { id: 1, name: "Gaming Laptop", price: "$1499", specs: "RTX 3080, 32GB RAM" },
-        { id: 2, name: "Ultrabook", price: "$1299", specs: "4K Display, 1TB SSD" }
-    ],
-    phones: [
-        { id: 3, name: "Smartphone Pro", price: "$999", specs: "5G, 256GB Storage" },
-        { id: 4, name: "Foldable Phone", price: "$1799", specs: "8\" Foldable Display" }
+    category: [
+        { id: 1, name: "Cup", price: "$1499", color: ["red", "blue", "green"] },
+        { id: 2, name: "Mug", price: "$1299", color: ["red", "yellow", "green"] }
     ]
 };
 
@@ -42,6 +51,15 @@ export default function ChatComponent() {
     const fileInputRef = useRef(null);
     const chatEndRef = useRef(null);
     const messageParam = searchParams.get('message')
+    const [orderDetails, setOrderDetails] = useState({
+        product: '',
+        color: '',
+        quantity: '',
+        logo: null,
+        logoPlacement: '',
+        email: '',
+        pricePerUnit: null,
+    });
 
     useEffect(() => {
         if (!initialized.current && messageParam) {
@@ -98,12 +116,103 @@ export default function ChatComponent() {
                 break;
             case lowerMsg.includes('product') || lowerMsg.includes('show'):
                 response.text = dummyResponses.products;
-                response.products = productCategories[lowerMsg.includes('phone') ? 'phones' : 'laptops'];
+                response.products = productCategories[lowerMsg.includes('category') ? 'category' : 'category'];
                 response.suggestions = suggestedQuestions.products;
                 break;
-            case selectedImage:
-                response.text = dummyResponses.image;
+            case lowerMsg.includes('cup') || lowerMsg.includes('mug'):
+                const selectedProduct = productCategories.category.find(p =>
+                    p.name.toLowerCase() === message.toLowerCase()
+                );
+
+                if (selectedProduct) {
+                    setOrderDetails(prev => ({
+                        ...prev,
+                        product: message,
+                        pricePerUnit: selectedProduct.price // Store the price
+                    }));
+                }
+                response.text = dummyResponses.quantity;
+                response.suggestions = suggestedQuestions.quantity;
                 break;
+
+            case lowerMsg.includes('50') || lowerMsg.includes('100') || lowerMsg.includes('200'):
+                setOrderDetails(prev => ({ ...prev, quantity: message }));
+                response.text = dummyResponses.color;
+                response.suggestions = suggestedQuestions.color;
+                break;
+
+            case lowerMsg.includes('red') || lowerMsg.includes('blue') || lowerMsg.includes('green'):
+                setOrderDetails(prev => ({ ...prev, color: message }));
+                response.text = dummyResponses.wantLogo;
+                response.suggestions = suggestedQuestions.wantLogo;
+                break;
+
+            case lowerMsg === 'yes':
+                response.text = dummyResponses.uploadLogo;
+                break;
+
+            case lowerMsg === 'yes, i want detailed quote':
+                response.text = dummyResponses.giveEmail;
+                break;
+
+            case lowerMsg.includes('logo'):
+                response.text = dummyResponses.logoPast;
+                response.suggestions = suggestedQuestions.logoPast;
+                break;
+
+            case lowerMsg === 'front' || lowerMsg === 'back' || lowerMsg === 'both' || lowerMsg === 'no, without image':
+                setOrderDetails(prev => ({ ...prev, logoPlacement: message }));
+                const quantity = parseInt(orderDetails.quantity, 10) || 1;
+                const pricePerUnit = parseFloat(orderDetails.pricePerUnit.replace("$", "")) || 0;
+                response.text = `Based on your choices, the price is $${(pricePerUnit).toFixed(2)} per ${orderDetails.product}. Your total comes to $${pricePerUnit * quantity}.`;;
+                response.suggestions = suggestedQuestions.calculate;
+                break;
+
+            // Add email validation case
+            case /\S+@\S+\.\S+/.test(lowerMsg):
+                (async () => {
+                    const updatedOrderDetails = {
+                        ...orderDetails,
+                        email: message
+                    };
+
+                    setOrderDetails(updatedOrderDetails);
+
+                    // Prepare request payload
+                    const payload = {
+                        product_name: updatedOrderDetails.product,
+                        quantity: updatedOrderDetails.quantity,
+                        color: updatedOrderDetails.color,
+                        logo_added: updatedOrderDetails.logo ? "Yes" : "No",
+                        logo_placement: updatedOrderDetails.logoPlacement,
+                        price_per_unit: updatedOrderDetails.pricePerUnit,
+                        total_price: (parseFloat(updatedOrderDetails.pricePerUnit) || 0) * (parseInt(updatedOrderDetails.quantity) || 1)
+                    };
+
+                    try {
+                        const res = await fetch(`${process.env.NEXT_PUBLIC_API_CHATBOT}/place-order/`, {
+                            method: "POST",
+                            headers: {
+                                "Accept": "application/json",
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const data = await res.json();
+                        console.log("Order placed successfully:", data);
+
+                        response.text = "Thank you! Your order has been placed successfully. 🎉";
+
+                    } catch (error) {
+                        console.error("Error placing order:", error);
+                        response.text = "Oops! Something went wrong while placing your order. Please try again.";
+                    }
+                    setOrderDetails(prev => ({ ...prev }));
+                })();
+                response.text = "Order placed successfully";
+                break;
+
             default:
                 response.text = dummyResponses.default;
         }
@@ -115,7 +224,13 @@ export default function ChatComponent() {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (e) => setSelectedImage(e.target.result);
+            reader.onload = (e) => {
+                setSelectedImage(e.target.result);
+                setOrderDetails(prev => ({
+                    ...prev,
+                    logo: e.target.result
+                }));
+            };
             reader.readAsDataURL(file);
         }
     };
@@ -123,7 +238,7 @@ export default function ChatComponent() {
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!input.trim() && !selectedImage) return;
-        handleNewMessage(input || "Image shared");
+        handleNewMessage(input || "Here is the Logo");
     };
 
     return (
@@ -154,7 +269,14 @@ export default function ChatComponent() {
                                         className="mb-2 rounded-lg max-h-40 object-cover"
                                     />
                                 )}
-                                <p className="text-white">{msg.text}</p>
+                                <p className="text-white">
+                                    {msg.text.split("\n").map((line, index) => (
+                                        <p key={index}>
+                                            {line}
+                                            <br />
+                                        </p>
+                                    ))}
+                                </p>
 
                                 {msg.products?.length > 0 && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
