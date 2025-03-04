@@ -17,7 +17,9 @@ const dummyResponses = {
     uploadLogo: "please upload your logo!",
     logoPast: "Logo received! Where should the logo be placed?",
     calculate: "Based on your choices, the price is $3.50 per mug. Your total comes to $700. Would you like a detailed quote?",
-    giveEmail: "Sending it to your email. Please confirm your email address"
+    giveEmail: "Sending it to your email. Please confirm your email address",
+    track_order: "Please provide tracking Id which you want to track!",
+    dummy_track: "Your order are pending, Please conform your order by visiting your email"
 
 };
 
@@ -31,6 +33,7 @@ const suggestedQuestions = {
     logoPast: ['Front', 'Back', "Both"],
     wantLogo: ['Yes', 'No, Without Image'],
     calculate: ['Yes, I want detailed quote', 'No'],
+    track_order:["1741097191", "1741097213"]
 };
 
 const productCategories = {
@@ -113,6 +116,13 @@ export default function ChatComponent() {
             case lowerMsg.includes('payment'):
                 response.text = dummyResponses.payment;
                 response.suggestions = suggestedQuestions.payment;
+                break;
+            case lowerMsg.includes('track'):
+                response.text = dummyResponses.track_order;
+                response.suggestions = suggestedQuestions.track_order;
+                break;
+            case lowerMsg.includes('1741097191') || lowerMsg.includes('1741097213'):
+                response.text = dummyResponses.dummy_track;
                 break;
             case lowerMsg.includes('product') || lowerMsg.includes('show'):
                 response.text = dummyResponses.products;
